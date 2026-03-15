@@ -1,0 +1,7 @@
+streamlit
+pandas
+plotly
+fpdf
+qrcode
+pillow
+st-gsheets-connection
