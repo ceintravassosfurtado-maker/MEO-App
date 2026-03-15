@@ -8,16 +8,17 @@ import plotly.express as px
 # Configuração da página
 st.set_page_config(page_title="MEO - Meu Estudo Orientado", layout="wide", page_icon="🧭")
 
-# --- CONEXÃO COM GOOGLE SHEETS ---
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-# Função para evitar erros de acentuação no PDF (Melhorada para fpdf2)
-def clean_text(text):
-    if text is None:
-        return ""
-    # Remove ou substitui caracteres que o latin-1 não suporta
-    return str(text).encode('latin-1', 'replace').decode('latin-1')
-
+# --- CONEXÃO COM GOOGLE SHEETS COM LIMPEZA DE CHAVE ---
+try:
+    # Garante que a chave privada não tenha espaços extras que causam o erro PEM
+    if "gsheets" in st.secrets["connections"]:
+        raw_key = st.secrets["connections"]["gsheets"]["private_key"]
+        st.secrets["connections"]["gsheets"]["private_key"] = raw_key.strip()
+    
+    conn = st.connection("gsheets", type=GSheetsConnection)
+except Exception as e:
+    st.error("Erro na configuração das chaves de acesso.")
+    st.stop()
 # Estilização CSS
 st.markdown("""
     <style>
