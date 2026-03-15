@@ -1,70 +1,121 @@
 import streamlit as st
 import pandas as pd
+from streamlit_gsheets import GSheetsConnection
 from fpdf import FPDF
 import datetime
+import plotly.express as px
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Laboratório de Estudo Orientado", layout="wide")
+# Configuração da página
+st.set_page_config(page_title="MEO - Meu Estudo Orientado", layout="wide", page_icon="🧭")
 
-# --- DICIONÁRIO DA FGB POR ÁREAS ---
-FGB = {
-    "Linguagens": ["Português", "Literatura", "Inglês", "Espanhol", "Artes", "Educação Física"],
-    "Matemática": ["Matemática (Álgebra)", "Matemática (Geometria)", "Estatística"],
-    "Ciências da Natureza": ["Biologia", "Física", "Química"],
-    "Ciências Humanas": ["História", "Geografia", "Filosofia", "Sociologia"]
-}
+# --- CONEXÃO COM GOOGLE SHEETS ---
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- MENU LATERAL ---
-st.sidebar.title("🚀 Navegação")
-menu = st.sidebar.radio("Selecione uma opção:", 
-    ["Dashboard", "Inserir Tabela", "Mapa Mental", "Escanear Resumo", "Configurações"])
+# Estilização Customizada (CSS)
+st.markdown("""
+    <style>
+    .main { background-color: #0e1117; color: #ffffff; }
+    .stButton>button { width: 100%; background-color: #00ffcc; color: black; font-weight: bold; border-radius: 10px; }
+    .stSelectbox, .stNumberInput { background-color: #262730; }
+    </style>
+    """, unsafe_allow_html=True)
 
-serie = st.sidebar.selectbox("Série Atual:", ["1ª Série EM", "2ª Série EM", "3ª Série EM"])
+st.title("🧭 MEO - Sistema de Registro de Estudos")
+st.markdown("---")
 
-# --- LÓGICA DO DASHBOARD ---
-if menu == "Dashboard":
-    st.header(f"📊 Painel de Desempenho - {serie}")
+# --- FORMULÁRIO DE ENTRADA ---
+col1, col2 = st.columns(2)
+
+with col1:
+    serie_sel = st.selectbox("Série", ["1ª Série EM", "2ª Série EM", "3ª Série EM"])
+    area_sel = st.selectbox("Área do Conhecimento", ["Linguagens", "Matemática", "Ciências Natureza", "Ciências Humanas"])
+    disc_sel = st.selectbox("Disciplina", ["Português", "Matemática", "Física", "Química", "Biologia", "História", "Geografia", "Sociologia", "Filosofia", "Inglês"])
+
+with col2:
+    tempo_sel = st.number_input("Tempo de Estudo (minutos)", min_value=15, max_value=300, step=15)
+    foco_sel = st.slider("Nível de Foco (1-10)", 1, 10, 8)
+    data_hoje = datetime.date.today().strftime("%d/%m/%Y")
+
+st.markdown("---")
+
+# --- BOTÃO SALVAR E GERAR PDF ---
+if st.button("🚀 SALVAR REGISTRO E GERAR COMPROVANTE"):
     
-    # Formulário de Registro
-    with st.expander("➕ Registrar Novo Estudo", expanded=True):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            area = st.selectbox("Área do Conhecimento", list(FGB.keys()))
-        with col2:
-            disciplina = st.selectbox("Disciplina", FGB[area])
-        with col3:
-            tempo = st.number_input("Tempo (minutos)", min_value=15, step=5)
-            
-        foco = st.select_slider("Nível de Foco", options=[1, 2, 3, 4, 5], value=3)
-        gargalo = st.multiselect("Gargalos Identificados:", ["Celular", "Sono", "Barulho", "Falta de Base", "Cansaço"])
+    novo_registro = {
+        "Data": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "Serie": serie_sel,
+        "Area": area_sel,
+        "Disciplina": disc_sel,
+        "Tempo": int(tempo_sel),
+        "Foco": int(foco_sel)
+    }
+
+    try:
+        # 1. Tenta ler e atualizar a planilha
+        df_existente = conn.read(worksheet="Página1", ttl=0)
+        df_final = pd.concat([df_existente, pd.DataFrame([novo_registro])], ignore_index=True)
+        conn.update(worksheet="Página1", data=df_final)
         
-        if st.button("Salvar Registro"):
-            st.success(f"Estudo de {disciplina} salvo com sucesso!")
+        st.success("✅ Sincronizado com Google Sheets com sucesso!")
 
-    st.divider()
-    st.subheader("Análise Detalhada")
-    # Espaço para os gráficos (Plotly/Pandas)
-    st.info("Os gráficos aparecerão aqui conforme os dados forem carregados do Google Sheets.")
+        # 2. Geração do PDF Real
+        pdf = FPDF()
+        pdf.add_page()
+        
+        # Cabeçalho do PDF
+        pdf.set_font("Arial", 'B', 16)
+        pdf.cell(200, 10, "MEO - COMPROVANTE DE ESTUDO", ln=True, align='C')
+        pdf.ln(10)
+        
+        # Conteúdo
+        pdf.set_font("Arial", size=12)
+        pdf.cell(200, 10, f"Data/Hora: {novo_registro['Data']}", ln=True)
+        pdf.cell(200, 10, f"Série: {novo_registro['Serie']}", ln=True)
+        pdf.cell(200, 10, f"Disciplina: {novo_registro['Disciplina']}", ln=True)
+        pdf.cell(200, 10, f"Tempo Dedicado: {novo_registro['Tempo']} minutos", ln=True)
+        pdf.cell(200, 10, f"Nível de Foco: {novo_registro['Foco']}/10", ln=True)
+        
+        pdf.ln(20)
+        pdf.set_font("Arial", 'I', 10)
+        pdf.cell(200, 10, "Este documento comprova a realização da atividade de Estudo Orientado.", align='C')
 
-# --- FERRAMENTAS ADICIONAIS ---
-elif menu == "Inserir Tabela":
-    st.header("📋 Gerador de Tabelas e Cronogramas")
-    df_modelo = pd.DataFrame([{"Atividade": "", "Prazo": "", "Status": "Pendente"}] * 5)
-    st.data_editor(df_modelo, num_rows="dynamic")
+        # Preparar arquivo para download
+        pdf_bytes = pdf.output(dest='S').encode('latin-1')
+        
+        st.download_button(
+            label="📥 BAIXAR COMPROVANTE PDF",
+            data=pdf_bytes,
+            file_name=f"Comprovante_MEO_{disc_sel}.pdf",
+            mime="application/pdf"
+        )
 
-elif menu == "Mapa Mental":
-    st.header("🧠 Centro de Mapas Mentais")
-    upload = st.file_uploader("Subir imagem do seu mapa mental", type=["png", "jpg", "jpeg"])
-    link = st.text_input("Link do Mapa (Canva/Miro):")
-    if upload: st.image(upload)
+    except Exception as e:
+        st.error(f"Erro na conexão! Verifique se a planilha está como 'Editor' e se o link nos Secrets está correto.")
+        st.info(f"Detalhe técnico: {e}")
 
-elif menu == "Escanear Resumo":
-    st.header("📸 Escanear Resumo Manuscrito")
-    foto = st.camera_input("Capture a foto do seu caderno")
-    if foto: st.image(foto)
+st.markdown("---")
 
-# --- EXPORTAÇÃO PDF ---
-st.sidebar.divider()
-if st.sidebar.button("📥 Gerar Relatório PDF"):
-    st.sidebar.write("Gerando PDF... (Simulação)")
-    # Aqui entra a lógica da biblioteca FPDF que discutimos
+# --- DASHBOARD DE ANÁLISE REAIS ---
+st.subheader("📊 Dashboard de Desempenho")
+
+try:
+    # Lê os dados em tempo real para os gráficos
+    df_visual = conn.read(worksheet="Página1", ttl=0)
+    
+    if not df_visual.empty:
+        col_graf1, col_graf2 = st.columns(2)
+        
+        with col_graf1:
+            # Gráfico de Pizza: Distribuição por Disciplina
+            fig_pizza = px.pie(df_visual, names='Disciplina', title='Matérias Mais Estudadas', hole=0.4)
+            st.plotly_chart(fig_pizza, use_container_width=True)
+            
+        with col_graf2:
+            # Gráfico de Barras: Tempo por Área
+            df_area = df_visual.groupby('Area')['Tempo'].sum().reset_index()
+            fig_barra = px.bar(df_area, x='Area', y='Tempo', title='Tempo Total por Área (min)', color='Area')
+            st.plotly_chart(fig_barra, use_container_width=True)
+    else:
+        st.info("Os gráficos aparecerão aqui assim que você realizar o primeiro registro.")
+except:
+    st.warning("Aguardando entrada de dados para gerar as análises.")
