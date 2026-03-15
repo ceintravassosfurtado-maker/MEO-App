@@ -5,28 +5,28 @@ from fpdf import FPDF
 import datetime
 import plotly.express as px
 
-# Configuração da página
+# --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="MEO - Meu Estudo Orientado", layout="wide", page_icon="🧭")
 
-# --- FUNÇÃO PARA LIMPAR TEXTO DO PDF (ACENTOS) ---
+# --- FUNÇÃO PARA LIMPAR TEXTO DO PDF (EVITA ERRO DE ACENTUAÇÃO) ---
 def clean_text(text):
-    if text is None:
-        return ""
+    if text is None: return ""
     return str(text).encode('latin-1', 'replace').decode('latin-1')
 
 # --- CONEXÃO COM GOOGLE SHEETS COM LIMPEZA DE CHAVE ---
 try:
-    # Garante que a chave privada não tenha espaços extras que causam o erro PEM
-    if "gsheets" in st.secrets["connections"]:
+    if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
+        # Limpa a chave de espaços em branco ou quebras de linha extras que causam o erro PEM
         raw_key = st.secrets["connections"]["gsheets"]["private_key"]
         st.secrets["connections"]["gsheets"]["private_key"] = raw_key.strip()
     
     conn = st.connection("gsheets", type=GSheetsConnection)
 except Exception as e:
-    st.error("Erro na configuração das chaves de acesso nos Secrets.")
+    st.error(f"Erro na configuração de acesso: {e}")
+    st.info("Verifique se os Secrets no Streamlit Cloud estão preenchidos corretamente.")
     st.stop()
 
-# Estilização CSS
+# --- ESTILIZAÇÃO CSS ---
 st.markdown("""
     <style>
     .main { background-color: #0e1117; color: #ffffff; }
@@ -105,8 +105,7 @@ if st.button("🚀 SALVAR REGISTRO E GERAR COMPROVANTE"):
         )
 
     except Exception as e:
-        st.error("Erro ao salvar os dados.")
-        st.info(f"Detalhe técnico: {e}")
+        st.error(f"Erro ao salvar os dados: {e}")
 
 # --- DASHBOARD ---
 st.markdown("---")
@@ -115,6 +114,7 @@ st.subheader("📊 Sua Evolução")
 try:
     df_visual = conn.read(worksheet="Dados", ttl=0)
     if df_visual is not None and not df_visual.empty:
+        # Garante que Tempo seja numérico
         df_visual['Tempo'] = pd.to_numeric(df_visual['Tempo'], errors='coerce')
         
         c1, c2 = st.columns(2)
@@ -122,6 +122,7 @@ try:
             fig1 = px.pie(df_visual, names='Disciplina', values='Tempo', title='Distribuição de Tempo por Matéria', hole=0.3)
             st.plotly_chart(fig1, use_container_width=True)
         with c2:
+            # Ordena por data
             df_visual['Data_dt'] = pd.to_datetime(df_visual['Data'], format="%d/%m/%Y %H:%M", errors='coerce')
             df_visual = df_visual.sort_values('Data_dt')
             
