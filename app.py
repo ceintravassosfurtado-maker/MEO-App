@@ -11,8 +11,11 @@ st.set_page_config(page_title="MEO - Meu Estudo Orientado", layout="wide", page_
 # --- CONEXÃO COM GOOGLE SHEETS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Função para evitar erros de acentuação no PDF
+# Função para evitar erros de acentuação no PDF (Melhorada para fpdf2)
 def clean_text(text):
+    if text is None:
+        return ""
+    # Remove ou substitui caracteres que o latin-1 não suporta
     return str(text).encode('latin-1', 'replace').decode('latin-1')
 
 # Estilização CSS
@@ -43,7 +46,7 @@ st.markdown("---")
 
 # --- BOTÃO SALVAR ---
 if st.button("🚀 SALVAR REGISTRO E GERAR COMPROVANTE"):
-    # Organiza os dados em um formato que o Pandas entende perfeitamente
+    # Dados em formato de lista para facilitar a criação do DataFrame
     novo_registro_dict = {
         "Data": [datetime.datetime.now().strftime("%d/%m/%Y %H:%M")],
         "Serie": [str(serie_sel)],
@@ -56,27 +59,27 @@ if st.button("🚀 SALVAR REGISTRO E GERAR COMPROVANTE"):
     novo_df = pd.DataFrame(novo_registro_dict)
 
     try:
-        # 1. Tenta ler os dados existentes
+        # 1. Tenta ler os dados existentes com tratamento de erro
         try:
             df_existente = conn.read(worksheet="Dados", ttl=0)
-        except:
+            # Se a planilha retornar nula ou sem colunas, cria uma estrutura
+            if df_existente is None or df_existente.empty:
+                df_existente = pd.DataFrame(columns=["Data", "Serie", "Area", "Disciplina", "Tempo", "Foco"])
+        except Exception:
             df_existente = pd.DataFrame(columns=["Data", "Serie", "Area", "Disciplina", "Tempo", "Foco"])
 
-        # 2. Junta o novo com o antigo (evita erro 400 por formato inválido)
-        if df_existente is not None and not df_existente.empty:
-            df_final = pd.concat([df_existente, novo_df], ignore_index=True)
-        else:
-            df_final = novo_df
+        # 2. Concatenação segura
+        df_final = pd.concat([df_existente, novo_df], ignore_index=True)
 
-        # 3. Faz o upload para o Google Sheets
+        # 3. Atualização no Google Sheets
         conn.update(worksheet="Dados", data=df_final)
         st.success("✅ DADOS SINCRONIZADOS COM A PLANILHA!")
 
-        # 4. Geração do PDF Real (sem erros de acento)
+        # 4. Geração do PDF
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", 'B', 16)
-        pdf.cell(200, 15, "MEO - COMPROVANTE DE ATIVIDADE", ln=True, align='C')
+        pdf.cell(200, 15, clean_text("MEO - COMPROVANTE DE ATIVIDADE"), ln=True, align='C')
         pdf.ln(10)
         
         pdf.set_font("Arial", size=12)
@@ -85,7 +88,10 @@ if st.button("🚀 SALVAR REGISTRO E GERAR COMPROVANTE"):
             texto_linha = f"{col}: {valor}"
             pdf.cell(200, 10, clean_text(texto_linha), ln=True)
         
-        pdf_bytes = pdf.output(dest='S').encode('latin-1')
+        # Gera os bytes do PDF de forma segura
+        pdf_output = pdf.output(dest='S')
+        # Algumas versões do fpdf2 retornam bytes, outras string. Tratamos aqui:
+        pdf_bytes = pdf_output if isinstance(pdf_output, bytes) else pdf_output.encode('latin-1')
         
         st.download_button(
             label="📥 BAIXAR COMPROVANTE EM PDF",
@@ -95,7 +101,7 @@ if st.button("🚀 SALVAR REGISTRO E GERAR COMPROVANTE"):
         )
 
     except Exception as e:
-        st.error("Falha na comunicação com o Google Sheets.")
+        st.error("Erro ao salvar os dados.")
         st.info(f"Detalhe técnico: {e}")
 
 # --- DASHBOARD ---
@@ -105,14 +111,21 @@ st.subheader("📊 Sua Evolução")
 try:
     df_visual = conn.read(worksheet="Dados", ttl=0)
     if df_visual is not None and not df_visual.empty:
+        # Garantir que Tempo seja numérico para os gráficos não quebrarem
+        df_visual['Tempo'] = pd.to_numeric(df_visual['Tempo'], errors='coerce')
+        
         c1, c2 = st.columns(2)
         with c1:
-            fig1 = px.pie(df_visual, names='Disciplina', title='Matérias Estudadas', hole=0.3)
+            fig1 = px.pie(df_visual, names='Disciplina', values='Tempo', title='Distribuição de Tempo por Matéria', hole=0.3)
             st.plotly_chart(fig1, use_container_width=True)
         with c2:
-            fig2 = px.bar(df_visual, x='Data', y='Tempo', color='Disciplina', title='Tempo por Sessão')
+            # Ordena por data para o gráfico de barras fazer sentido
+            df_visual['Data_dt'] = pd.to_datetime(df_visual['Data'], format="%d/%m/%Y %H:%M", errors='coerce')
+            df_visual = df_visual.sort_values('Data_dt')
+            
+            fig2 = px.bar(df_visual, x='Data', y='Tempo', color='Disciplina', title='Tempo de Estudo por Sessão')
             st.plotly_chart(fig2, use_container_width=True)
     else:
         st.info("Os gráficos aparecerão aqui após o seu primeiro registro!")
-except:
-    st.write("Conectando aos gráficos...")
+except Exception as e:
+    st.write("Aguardando dados para gerar gráficos...")
