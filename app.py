@@ -13,31 +13,17 @@ def clean_text(text):
     if text is None: return ""
     return str(text).encode('latin-1', 'replace').decode('latin-1')
 
-# --- CONEXÃO COM GOOGLE SHEETS (VERSÃO AJUSTADA) ---
+# --- CONEXÃO COM GOOGLE SHEETS (MÉTODO DIRETO) ---
 try:
-    # Coletamos os dados dos secrets
-    creds = st.secrets["connections"]["gsheets"]
+    # Criamos um dicionário local limpando apenas a chave
+    creds_limpas = dict(st.secrets["connections"]["gsheets"])
+    creds_limpas["private_key"] = creds_limpas["private_key"].strip()
     
-    # Criamos o dicionário com os nomes de argumentos que o GSheetsConnection espera
-    # Importante: o parâmetro para o 'type' do JSON deve ser passado como 'type'
-    conn = st.connection(
-        "gsheets", 
-        type=GSheetsConnection,
-        type=creds["type"],
-        project_id=creds["project_id"],
-        private_key_id=creds["private_key_id"],
-        private_key=creds["private_key"].strip(),
-        client_email=creds["client_email"],
-        client_id=creds["client_id"],
-        auth_uri=creds["auth_uri"],
-        token_uri=creds["token_uri"],
-        auth_provider_x509_cert_url=creds["auth_provider_x509_cert_url"],
-        client_x509_cert_url=creds["client_x509_cert_url"]
-    )
+    # Conectamos passando o dicionário como argumentos
+    conn = st.connection("gsheets", type=GSheetsConnection, **creds_limpas)
     
 except Exception as e:
     st.error(f"Erro de Conexão: {e}")
-    st.info("💡 Verifique os nomes dos campos nos Secrets.")
     st.stop()
 
 # --- ESTILIZAÇÃO CSS ---
