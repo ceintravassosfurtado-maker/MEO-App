@@ -13,19 +13,30 @@ def clean_text(text):
     if text is None: return ""
     return str(text).encode('latin-1', 'replace').decode('latin-1')
 
-# --- CONEXÃO COM GOOGLE SHEETS (MÉTODO DIRETO) ---
+# --- CONEXÃO COM GOOGLE SHEETS (CORREÇÃO DE DUPLICIDADE) ---
 try:
-    # Criamos um dicionário local limpando apenas a chave
-    creds_limpas = dict(st.secrets["connections"]["gsheets"])
-    creds_limpas["private_key"] = creds_limpas["private_key"].strip()
+    # 1. Transformamos os secrets em um dicionário real
+    creds_dict = dict(st.secrets["connections"]["gsheets"])
     
-    # Conectamos passando o dicionário como argumentos
-    conn = st.connection("gsheets", type=GSheetsConnection, **creds_limpas)
+    # 2. Removemos o 'type' do dicionário para não conflitar com o type da conexão
+    # O valor de 'type' (service_account) será passado dentro do pacote de credenciais
+    if "type" in creds_dict:
+        tipo_conta = creds_dict.pop("type")
+    
+    # 3. Limpamos a chave privada
+    creds_dict["private_key"] = creds_dict["private_key"].strip()
+    
+    # 4. Conectamos passando o tipo da conexão E as credenciais separadamente
+    conn = st.connection(
+        "gsheets", 
+        type=GSheetsConnection, 
+        type_service_account=tipo_conta, # Passamos o tipo da conta com nome diferente
+        **creds_dict
+    )
     
 except Exception as e:
     st.error(f"Erro de Conexão: {e}")
     st.stop()
-
 # --- ESTILIZAÇÃO CSS ---
 st.markdown("""
     <style>
