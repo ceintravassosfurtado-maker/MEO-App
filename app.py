@@ -13,17 +13,17 @@ def clean_text(text):
     if text is None: return ""
     return str(text).encode('latin-1', 'replace').decode('latin-1')
 
-# --- CONEXÃO COM GOOGLE SHEETS (VERSÃO CORRIGIDA) ---
+# --- CONEXÃO COM GOOGLE SHEETS (VERSÃO AJUSTADA) ---
 try:
-    # Criamos um dicionário local com os dados dos secrets para limpar a chave privada
-    # Isso evita o erro "Secrets does not support attribute assignment"
+    # Coletamos os dados dos secrets
     creds = st.secrets["connections"]["gsheets"]
     
-    # Criamos a conexão passando os parâmetros e limpando a chave com .strip()
+    # Criamos o dicionário com os nomes de argumentos que o GSheetsConnection espera
+    # Importante: o parâmetro para o 'type' do JSON deve ser passado como 'type'
     conn = st.connection(
         "gsheets", 
         type=GSheetsConnection,
-        type_service_account=creds["type"],
+        type=creds["type"],
         project_id=creds["project_id"],
         private_key_id=creds["private_key_id"],
         private_key=creds["private_key"].strip(),
@@ -37,7 +37,7 @@ try:
     
 except Exception as e:
     st.error(f"Erro de Conexão: {e}")
-    st.info("💡 Verifique se todos os campos estão preenchidos corretamente nos Secrets do Streamlit Cloud.")
+    st.info("💡 Verifique os nomes dos campos nos Secrets.")
     st.stop()
 
 # --- ESTILIZAÇÃO CSS ---
