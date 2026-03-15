@@ -13,17 +13,26 @@ def clean_text(text):
     if text is None: return ""
     return str(text).encode('latin-1', 'replace').decode('latin-1')
 
-# --- CONEXÃO COM GOOGLE SHEETS COM LIMPEZA DE CHAVE ---
+# --- CONEXÃO COM GOOGLE SHEETS (VERSÃO ULTRA-ROBUSTA) ---
 try:
+    # 1. Verifica se a estrutura básica existe nos Secrets
     if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
-        # Limpa a chave de espaços em branco ou quebras de linha extras que causam o erro PEM
-        raw_key = st.secrets["connections"]["gsheets"]["private_key"]
-        st.secrets["connections"]["gsheets"]["private_key"] = raw_key.strip()
+        # 2. Tenta limpar a chave de diferentes formas para evitar erro PEM
+        try:
+            # Tenta acessar como dicionário
+            raw_key = st.secrets["connections"]["gsheets"]["private_key"]
+            st.secrets["connections"]["gsheets"]["private_key"] = raw_key.strip()
+        except:
+            # Se falhar, tenta acessar por atributo
+            raw_key = st.secrets.connections.gsheets.private_key
+            st.secrets.connections.gsheets.private_key = raw_key.strip()
     
+    # 3. Cria a conexão
     conn = st.connection("gsheets", type=GSheetsConnection)
+    
 except Exception as e:
-    st.error(f"Erro na configuração de acesso: {e}")
-    st.info("Verifique se os Secrets no Streamlit Cloud estão preenchidos corretamente.")
+    st.error(f"Erro de Conexão: {e}")
+    st.info("💡 DICA: Tente dar um 'Reboot App' no painel do Streamlit Cloud após salvar os Secrets.")
     st.stop()
 
 # --- ESTILIZAÇÃO CSS ---
@@ -114,7 +123,6 @@ st.subheader("📊 Sua Evolução")
 try:
     df_visual = conn.read(worksheet="Dados", ttl=0)
     if df_visual is not None and not df_visual.empty:
-        # Garante que Tempo seja numérico
         df_visual['Tempo'] = pd.to_numeric(df_visual['Tempo'], errors='coerce')
         
         c1, c2 = st.columns(2)
@@ -122,7 +130,6 @@ try:
             fig1 = px.pie(df_visual, names='Disciplina', values='Tempo', title='Distribuição de Tempo por Matéria', hole=0.3)
             st.plotly_chart(fig1, use_container_width=True)
         with c2:
-            # Ordena por data
             df_visual['Data_dt'] = pd.to_datetime(df_visual['Data'], format="%d/%m/%Y %H:%M", errors='coerce')
             df_visual = df_visual.sort_values('Data_dt')
             
