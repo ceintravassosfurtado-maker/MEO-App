@@ -13,29 +13,15 @@ def clean_text(text):
     if text is None: return ""
     return str(text).encode('latin-1', 'replace').decode('latin-1')
 
-# --- CONEXÃO COM GOOGLE SHEETS (CORREÇÃO DE DUPLICIDADE) ---
+# --- CONEXÃO COM GOOGLE SHEETS (MÉTODO SIMPLIFICADO) ---
 try:
-    # 1. Transformamos os secrets em um dicionário real
-    creds_dict = dict(st.secrets["connections"]["gsheets"])
-    
-    # 2. Removemos o 'type' do dicionário para não conflitar com o type da conexão
-    # O valor de 'type' (service_account) será passado dentro do pacote de credenciais
-    if "type" in creds_dict:
-        tipo_conta = creds_dict.pop("type")
-    
-    # 3. Limpamos a chave privada
-    creds_dict["private_key"] = creds_dict["private_key"].strip()
-    
-    # 4. Conectamos passando o tipo da conexão E as credenciais separadamente
-    conn = st.connection(
-        "gsheets", 
-        type=GSheetsConnection, 
-        type_service_account=tipo_conta, # Passamos o tipo da conta com nome diferente
-        **creds_dict
-    )
+    # Deixamos o Streamlit gerenciar as credenciais automaticamente
+    # Ele vai buscar sozinho o que está dentro de [connections.gsheets] nos Secrets
+    conn = st.connection("gsheets", type=GSheetsConnection)
     
 except Exception as e:
     st.error(f"Erro de Conexão: {e}")
+    st.info("💡 Se o erro persistir, verifique a formatação dos Secrets.")
     st.stop()
 # --- ESTILIZAÇÃO CSS ---
 st.markdown("""
