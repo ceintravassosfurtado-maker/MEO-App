@@ -8,6 +8,12 @@ import plotly.express as px
 # Configuração da página
 st.set_page_config(page_title="MEO - Meu Estudo Orientado", layout="wide", page_icon="🧭")
 
+# --- FUNÇÃO PARA LIMPAR TEXTO DO PDF (ACENTOS) ---
+def clean_text(text):
+    if text is None:
+        return ""
+    return str(text).encode('latin-1', 'replace').decode('latin-1')
+
 # --- CONEXÃO COM GOOGLE SHEETS COM LIMPEZA DE CHAVE ---
 try:
     # Garante que a chave privada não tenha espaços extras que causam o erro PEM
@@ -17,8 +23,9 @@ try:
     
     conn = st.connection("gsheets", type=GSheetsConnection)
 except Exception as e:
-    st.error("Erro na configuração das chaves de acesso.")
+    st.error("Erro na configuração das chaves de acesso nos Secrets.")
     st.stop()
+
 # Estilização CSS
 st.markdown("""
     <style>
@@ -47,7 +54,6 @@ st.markdown("---")
 
 # --- BOTÃO SALVAR ---
 if st.button("🚀 SALVAR REGISTRO E GERAR COMPROVANTE"):
-    # Dados em formato de lista para facilitar a criação do DataFrame
     novo_registro_dict = {
         "Data": [datetime.datetime.now().strftime("%d/%m/%Y %H:%M")],
         "Serie": [str(serie_sel)],
@@ -60,10 +66,9 @@ if st.button("🚀 SALVAR REGISTRO E GERAR COMPROVANTE"):
     novo_df = pd.DataFrame(novo_registro_dict)
 
     try:
-        # 1. Tenta ler os dados existentes com tratamento de erro
+        # 1. Tenta ler os dados existentes
         try:
             df_existente = conn.read(worksheet="Dados", ttl=0)
-            # Se a planilha retornar nula ou sem colunas, cria uma estrutura
             if df_existente is None or df_existente.empty:
                 df_existente = pd.DataFrame(columns=["Data", "Serie", "Area", "Disciplina", "Tempo", "Foco"])
         except Exception:
@@ -89,9 +94,7 @@ if st.button("🚀 SALVAR REGISTRO E GERAR COMPROVANTE"):
             texto_linha = f"{col}: {valor}"
             pdf.cell(200, 10, clean_text(texto_linha), ln=True)
         
-        # Gera os bytes do PDF de forma segura
         pdf_output = pdf.output(dest='S')
-        # Algumas versões do fpdf2 retornam bytes, outras string. Tratamos aqui:
         pdf_bytes = pdf_output if isinstance(pdf_output, bytes) else pdf_output.encode('latin-1')
         
         st.download_button(
@@ -112,7 +115,6 @@ st.subheader("📊 Sua Evolução")
 try:
     df_visual = conn.read(worksheet="Dados", ttl=0)
     if df_visual is not None and not df_visual.empty:
-        # Garantir que Tempo seja numérico para os gráficos não quebrarem
         df_visual['Tempo'] = pd.to_numeric(df_visual['Tempo'], errors='coerce')
         
         c1, c2 = st.columns(2)
@@ -120,7 +122,6 @@ try:
             fig1 = px.pie(df_visual, names='Disciplina', values='Tempo', title='Distribuição de Tempo por Matéria', hole=0.3)
             st.plotly_chart(fig1, use_container_width=True)
         with c2:
-            # Ordena por data para o gráfico de barras fazer sentido
             df_visual['Data_dt'] = pd.to_datetime(df_visual['Data'], format="%d/%m/%Y %H:%M", errors='coerce')
             df_visual = df_visual.sort_values('Data_dt')
             
