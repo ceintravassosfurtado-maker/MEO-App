@@ -13,26 +13,31 @@ def clean_text(text):
     if text is None: return ""
     return str(text).encode('latin-1', 'replace').decode('latin-1')
 
-# --- CONEXÃO COM GOOGLE SHEETS (VERSÃO ULTRA-ROBUSTA) ---
+# --- CONEXÃO COM GOOGLE SHEETS (VERSÃO CORRIGIDA) ---
 try:
-    # 1. Verifica se a estrutura básica existe nos Secrets
-    if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
-        # 2. Tenta limpar a chave de diferentes formas para evitar erro PEM
-        try:
-            # Tenta acessar como dicionário
-            raw_key = st.secrets["connections"]["gsheets"]["private_key"]
-            st.secrets["connections"]["gsheets"]["private_key"] = raw_key.strip()
-        except:
-            # Se falhar, tenta acessar por atributo
-            raw_key = st.secrets.connections.gsheets.private_key
-            st.secrets.connections.gsheets.private_key = raw_key.strip()
+    # Criamos um dicionário local com os dados dos secrets para limpar a chave privada
+    # Isso evita o erro "Secrets does not support attribute assignment"
+    creds = st.secrets["connections"]["gsheets"]
     
-    # 3. Cria a conexão
-    conn = st.connection("gsheets", type=GSheetsConnection)
+    # Criamos a conexão passando os parâmetros e limpando a chave com .strip()
+    conn = st.connection(
+        "gsheets", 
+        type=GSheetsConnection,
+        type_service_account=creds["type"],
+        project_id=creds["project_id"],
+        private_key_id=creds["private_key_id"],
+        private_key=creds["private_key"].strip(),
+        client_email=creds["client_email"],
+        client_id=creds["client_id"],
+        auth_uri=creds["auth_uri"],
+        token_uri=creds["token_uri"],
+        auth_provider_x509_cert_url=creds["auth_provider_x509_cert_url"],
+        client_x509_cert_url=creds["client_x509_cert_url"]
+    )
     
 except Exception as e:
     st.error(f"Erro de Conexão: {e}")
-    st.info("💡 DICA: Tente dar um 'Reboot App' no painel do Streamlit Cloud após salvar os Secrets.")
+    st.info("💡 Verifique se todos os campos estão preenchidos corretamente nos Secrets do Streamlit Cloud.")
     st.stop()
 
 # --- ESTILIZAÇÃO CSS ---
