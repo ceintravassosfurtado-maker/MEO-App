@@ -11,82 +11,108 @@ st.set_page_config(page_title="MEO - Meu Estudo Orientado", layout="wide", page_
 # --- CONEXÃO COM GOOGLE SHEETS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Função para limpar texto para o PDF (remove problemas de acento)
+# Função para evitar erros de acentuação no PDF
 def clean_text(text):
     return str(text).encode('latin-1', 'replace').decode('latin-1')
 
-# Estilização
+# Estilização CSS
 st.markdown("""
     <style>
     .main { background-color: #0e1117; color: #ffffff; }
-    .stButton>button { width: 100%; background-color: #00ffcc; color: black; font-weight: bold; border-radius: 10px; }
+    .stButton>button { width: 100%; background-color: #00ffcc; color: black; font-weight: bold; border-radius: 10px; height: 3em; }
+    div[data-baseweb="select"] > div { background-color: #262730; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🧭 MEO - Registro de Estudos")
+st.title("🧭 MEO - Sistema de Gestão de Estudos")
+st.write(f"Data de hoje: {datetime.date.today().strftime('%d/%m/%Y')}")
 
-# --- FORMULÁRIO ---
-col1, col2 = st.columns(2)
-with col1:
-    serie_sel = st.selectbox("Serie", ["1 EM", "2 EM", "3 EM"])
-    area_sel = st.selectbox("Area", ["Linguagens", "Matematica", "Ciencias Natureza", "Ciencias Humanas"])
-    disc_sel = st.selectbox("Disciplina", ["Portugues", "Matematica", "Fisica", "Quimica", "Biologia", "Historia", "Geografia", "Sociologia", "Filosofia", "Ingles"])
+# --- FORMULÁRIO DE ENTRADA ---
+with st.container():
+    col1, col2 = st.columns(2)
+    with col1:
+        serie_sel = st.selectbox("Série", ["1 EM", "2 EM", "3 EM"])
+        area_sel = st.selectbox("Área", ["Linguagens", "Matemática", "Ciências Natureza", "Ciências Humanas"])
+        disc_sel = st.selectbox("Disciplina", ["Português", "Matemática", "Física", "Química", "Biologia", "História", "Geografia", "Sociologia", "Filosofia", "Inglês"])
 
-with col2:
-    tempo_sel = st.number_input("Tempo (minutos)", min_value=15, max_value=300, step=15)
-    foco_sel = st.slider("Foco (1-10)", 1, 10, 8)
+    with col2:
+        tempo_sel = st.number_input("Tempo de Estudo (minutos)", min_value=15, max_value=300, step=15, value=45)
+        foco_sel = st.slider("Nível de Foco (1-10)", 1, 10, 8)
 
-if st.button("🚀 SALVAR E GERAR COMPROVANTE"):
-    novo_registro = {
-        "Data": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
-        "Serie": clean_text(serie_sel),
-        "Area": clean_text(area_sel),
-        "Disciplina": clean_text(disc_sel),
-        "Tempo": int(tempo_sel),
-        "Foco": int(foco_sel)
+st.markdown("---")
+
+# --- BOTÃO SALVAR ---
+if st.button("🚀 SALVAR REGISTRO E GERAR COMPROVANTE"):
+    # Organiza os dados em um formato que o Pandas entende perfeitamente
+    novo_registro_dict = {
+        "Data": [datetime.datetime.now().strftime("%d/%m/%Y %H:%M")],
+        "Serie": [str(serie_sel)],
+        "Area": [str(area_sel)],
+        "Disciplina": [str(disc_sel)],
+        "Tempo": [int(tempo_sel)],
+        "Foco": [int(foco_sel)]
     }
+    
+    novo_df = pd.DataFrame(novo_registro_dict)
 
     try:
-        # Lendo a aba "Dados" (Renomeie sua planilha para Dados!)
-        df_existente = conn.read(worksheet="Dados", ttl=0)
-        df_final = pd.concat([df_existente, pd.DataFrame([novo_registro])], ignore_index=True)
-        conn.update(worksheet="Dados", data=df_final)
-        
-        st.success("✅ Sincronizado com Google Sheets!")
+        # 1. Tenta ler os dados existentes
+        try:
+            df_existente = conn.read(worksheet="Dados", ttl=0)
+        except:
+            df_existente = pd.DataFrame(columns=["Data", "Serie", "Area", "Disciplina", "Tempo", "Foco"])
 
-        # Geração do PDF
+        # 2. Junta o novo com o antigo (evita erro 400 por formato inválido)
+        if df_existente is not None and not df_existente.empty:
+            df_final = pd.concat([df_existente, novo_df], ignore_index=True)
+        else:
+            df_final = novo_df
+
+        # 3. Faz o upload para o Google Sheets
+        conn.update(worksheet="Dados", data=df_final)
+        st.success("✅ DADOS SINCRONIZADOS COM A PLANILHA!")
+
+        # 4. Geração do PDF Real (sem erros de acento)
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", 'B', 16)
-        pdf.cell(200, 10, "MEO - COMPROVANTE DE ESTUDO", ln=True, align='C')
+        pdf.cell(200, 15, "MEO - COMPROVANTE DE ATIVIDADE", ln=True, align='C')
         pdf.ln(10)
         
         pdf.set_font("Arial", size=12)
-        pdf.cell(200, 10, clean_text(f"Data: {novo_registro['Data']}"), ln=True)
-        pdf.cell(200, 10, clean_text(f"Disciplina: {novo_registro['Disciplina']}"), ln=True)
-        pdf.cell(200, 10, clean_text(f"Tempo: {novo_registro['Tempo']} min"), ln=True)
-        pdf.cell(200, 10, clean_text(f"Foco: {novo_registro['Foco']}/10"), ln=True)
+        for col in novo_df.columns:
+            valor = novo_df[col].iloc[0]
+            texto_linha = f"{col}: {valor}"
+            pdf.cell(200, 10, clean_text(texto_linha), ln=True)
         
         pdf_bytes = pdf.output(dest='S').encode('latin-1')
         
         st.download_button(
-            label="📥 BAIXAR COMPROVANTE PDF",
+            label="📥 BAIXAR COMPROVANTE EM PDF",
             data=pdf_bytes,
-            file_name=f"MEO_{disc_sel}.pdf",
+            file_name=f"Comprovante_MEO_{disc_sel}.pdf",
             mime="application/pdf"
         )
 
     except Exception as e:
-        st.error(f"Erro: Verifique se a aba da planilha se chama 'Dados' e se e Editor.")
-        st.info(f"Detalhe: {e}")
+        st.error("Falha na comunicação com o Google Sheets.")
+        st.info(f"Detalhe técnico: {e}")
 
+# --- DASHBOARD ---
 st.markdown("---")
-st.subheader("📊 Dashboard")
+st.subheader("📊 Sua Evolução")
 
 try:
     df_visual = conn.read(worksheet="Dados", ttl=0)
-    if not df_visual.empty:
-        fig_pizza = px.pie(df_visual, names='Disciplina', title='Distribuicao por Materia')
-        st.plotly_chart(fig_pizza, use_container_width=True)
+    if df_visual is not None and not df_visual.empty:
+        c1, c2 = st.columns(2)
+        with c1:
+            fig1 = px.pie(df_visual, names='Disciplina', title='Matérias Estudadas', hole=0.3)
+            st.plotly_chart(fig1, use_container_width=True)
+        with c2:
+            fig2 = px.bar(df_visual, x='Data', y='Tempo', color='Disciplina', title='Tempo por Sessão')
+            st.plotly_chart(fig2, use_container_width=True)
+    else:
+        st.info("Os gráficos aparecerão aqui após o seu primeiro registro!")
 except:
-    st.info("Aguardando dados...")
+    st.write("Conectando aos gráficos...")
