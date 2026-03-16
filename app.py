@@ -5,144 +5,139 @@ from fpdf import FPDF
 import datetime
 import time
 import plotly.express as px
+import qrcode
+from io import BytesIO
+from PIL import Image
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="MEO - Meu Estudo Orientado", layout="wide", page_icon="🧭")
+st.set_page_config(page_title="MEO - Sistema Inteligente", layout="wide", page_icon="🧭")
 
-# --- FUNÇÃO PARA LIMPAR TEXTO DO PDF ---
+# --- FUNÇÕES DE SUPORTE ---
 def clean_text(text):
     if text is None: return ""
     return str(text).encode('latin-1', 'replace').decode('latin-1')
 
-# --- CONEXÃO COM GOOGLE SHEETS (MÉTODO AUTOMÁTICO - EVITA ERRO DE ARGUMENTO) ---
+def gerar_qr(dados):
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(dados)
+    qr.make(fit=True)
+    img_qr = qr.make_image(fill_color="black", back_color="white")
+    buf = BytesIO()
+    img_qr.save(buf, format="PNG")
+    return buf
+
+# --- CONEXÃO G-SHEETS ---
 try:
-    # O Streamlit lerá automaticamente as credenciais da seção [connections.gsheets] nos Secrets
     conn = st.connection("gsheets", type=GSheetsConnection)
 except Exception as e:
     st.error(f"Erro de Conexão: {e}")
-    st.info("💡 Se o erro persistir, verifique se os Secrets estão formatados corretamente.")
     st.stop()
 
-# --- ESTILIZAÇÃO CSS ---
-st.markdown("""
-    <style>
-    .main { background-color: #0e1117; color: #ffffff; }
-    .stButton>button { width: 100%; border-radius: 10px; height: 3em; font-weight: bold; }
-    .stMetric { background-color: #1e2130; padding: 15px; border-radius: 10px; border: 1px solid #00ffcc; }
-    </style>
-    """, unsafe_allow_html=True)
+# --- INTERFACE ---
+st.title("🧭 MEO - Gestão de Estudos Avançada")
 
-st.title("🧭 MEO - Sistema de Gestão de Estudos")
-
-# --- LÓGICA DO CRONOMETRO ---
-if 'rodando' not in st.session_state:
-    st.session_state.rodando = False
-if 'inicio_time' not in st.session_state:
-    st.session_state.inicio_time = None
+# --- CRONÔMETRO ---
+if 'rodando' not in st.session_state: st.session_state.rodando = False
+if 'inicio_time' not in st.session_state: st.session_state.inicio_time = None
 
 col_t1, col_t2, col_t3 = st.columns([1, 1, 2])
-
 with col_t1:
-    if st.button("▶️ INICIAR ESTUDO", type="primary"):
+    if st.button("▶️ INICIAR"):
         st.session_state.rodando = True
         st.session_state.inicio_time = time.time()
-
 with col_t2:
-    if st.button("⏹️ PARAR/RESETAR"):
+    if st.button("⏹️ PARAR"):
         st.session_state.rodando = False
-        st.session_state.inicio_time = None
-
 with col_t3:
     if st.session_state.rodando:
         tempo_passado = int((time.time() - st.session_state.inicio_time) / 60)
-        st.metric("Tempo Decorrido", f"{tempo_passado} min", delta="Em progresso...")
-        time.sleep(1) 
+        st.metric("Tempo", f"{tempo_passado} min", "Contando...")
+        time.sleep(2)
         st.rerun()
-    else:
-        st.metric("Status", "Pausado", delta_color="off")
 
 st.markdown("---")
 
-# --- FORMULÁRIO DE ENTRADA ---
-with st.form("form_estudo"):
-    c1, c2 = st.columns(2)
-    with c1:
-        serie_sel = st.selectbox("Série", ["1 EM", "2 EM", "3 EM"])
-        area_sel = st.selectbox("Área", ["Linguagens", "Matemática", "Ciências Natureza", "Ciências Humanas"])
-        disc_sel = st.selectbox("Disciplina", ["Português", "Matemática", "Física", "Química", "Biologia", "História", "Geografia", "Sociologia", "Filosofia", "Inglês"])
-        assunto = st.text_input("Assunto Estudado", placeholder="Ex: Termodinâmica")
+# --- ABAS DE FUNCIONALIDADES ---
+tab_reg, tab_edit, tab_quest, tab_dash = st.tabs(["📝 Registro", "table Edição Excel", "❓ Questionários", "📊 Dashboard"])
 
-    with c2:
-        sugestao_tempo = 0
-        if not st.session_state.rodando and st.session_state.inicio_time is not None:
-            sugestao_tempo = int((time.time() - st.session_state.inicio_time) / 60)
+with tab_reg:
+    with st.form("form_avancado"):
+        c1, c2 = st.columns(2)
+        with c1:
+            serie = st.selectbox("Série", ["1 EM", "2 EM", "3 EM"])
+            disc = st.selectbox("Disciplina", ["Português", "Matemática", "Física", "Química", "Biologia", "História"])
+            assunto = st.text_input("Assunto")
+            # --- CAPTURA DE IMAGEM ---
+            foto = st.camera_input("📸 Capturar nota/livro")
         
-        tempo_final = st.number_input("Tempo Total (minutos)", min_value=0, value=max(sugestao_tempo, 0))
-        foco_sel = st.slider("Nível de Foco (1-10)", 1, 10, 8)
-        
-    enviar = st.form_submit_button("🚀 FINALIZAR E SALVAR REGISTRO")
+        with c2:
+            sugestao = 0
+            if not st.session_state.rodando and st.session_state.inicio_time:
+                sugestao = int((time.time() - st.session_state.inicio_time) / 60)
+            tempo = st.number_input("Minutos", min_value=0, value=max(sugestao, 0))
+            foco = st.slider("Foco", 1, 10, 8)
+            pesquisa = st.text_area("Temas de Pesquisa / Resumo")
 
-if enviar:
-    if tempo_final <= 0:
-        st.warning("O tempo deve ser maior que zero!")
-    else:
-        novo_registro = {
+        enviar = st.form_submit_button("🚀 SALVAR TUDO")
+
+    if enviar:
+        novo = {
             "Data": [datetime.datetime.now().strftime("%d/%m/%Y %H:%M")],
-            "Serie": [str(serie_sel)],
-            "Area": [str(area_sel)],
-            "Disciplina": [str(disc_sel)],
-            "Assunto": [str(assunto)],
-            "Tempo": [int(tempo_final)],
-            "Foco": [int(foco_sel)]
+            "Serie": [serie], "Disciplina": [disc], "Assunto": [assunto],
+            "Tempo": [tempo], "Foco": [foco], "Pesquisa": [pesquisa]
         }
-        
-        df_novo = pd.DataFrame(novo_registro)
-
+        df_novo = pd.DataFrame(novo)
         try:
-            # 1. Tenta ler ou criar DataFrame vazio com as colunas certas
-            try:
-                df_atual = conn.read(worksheet="Dados", ttl=0)
-            except:
-                df_atual = pd.DataFrame(columns=novo_registro.keys())
-
+            df_atual = conn.read(worksheet="Dados", ttl=0)
             df_final = pd.concat([df_atual, df_novo], ignore_index=True)
             conn.update(worksheet="Dados", data=df_final)
+            st.success("✅ Sincronizado!")
             
-            st.success("✅ Registro salvo na planilha!")
-            st.session_state.inicio_time = None
-            
-            # Gerar PDF
+            # --- PDF COM QR CODE ---
             pdf = FPDF()
             pdf.add_page()
             pdf.set_font("Arial", 'B', 16)
-            pdf.cell(200, 15, clean_text("MEO - COMPROVANTE"), ln=True, align='C')
-            pdf.ln(10)
+            pdf.cell(200, 10, "COMPROVANTE MEO", ln=True, align='C')
             pdf.set_font("Arial", size=12)
-            for k, v in novo_registro.items():
-                pdf.cell(200, 10, clean_text(f"{k}: {v[0]}"), ln=True)
+            for k, v in novo.items():
+                pdf.cell(200, 8, clean_text(f"{k}: {v[0]}"), ln=True)
             
-            pdf_bytes = pdf.output(dest='S').encode('latin-1')
-            st.download_button("📥 BAIXAR PDF", pdf_bytes, f"MEO_{disc_sel}.pdf", "application/pdf")
+            # Inserir QR Code no PDF
+            qr_buf = gerar_qr(f"Registro MEO: {assunto} - {datetime.datetime.now()}")
+            with open("temp_qr.png", "wb") as f: f.write(qr_buf.getbuffer())
+            pdf.image("temp_qr.png", x=150, y=10, w=40)
             
+            pdf_out = pdf.output(dest='S').encode('latin-1')
+            st.download_button("📥 Baixar PDF com QR Code", pdf_out, "MEO_Pro.pdf")
         except Exception as e:
-            st.error(f"Erro ao salvar: {e}")
+            st.error(f"Erro: {e}")
 
-# --- DASHBOARD ---
-st.markdown("---")
-st.subheader("📊 Gráficos de Desempenho")
+with tab_edit:
+    st.subheader("📝 Edição Direta (Estilo Excel)")
+    df_edit = conn.read(worksheet="Dados", ttl=0)
+    # Tabela editável
+    df_editado = st.data_editor(df_edit, num_rows="dynamic")
+    if st.button("💾 Salvar Alterações da Tabela"):
+        conn.update(worksheet="Dados", data=df_editado)
+        st.success("Planilha atualizada!")
 
-try:
+with tab_quest:
+    st.subheader("❓ Gerador de Questionário")
+    with st.expander("Criar Nova Pergunta"):
+        pergunta = st.text_input("Enunciado")
+        c_q1, c_q2 = st.columns(2)
+        alt_a = c_q1.text_input("A)")
+        alt_b = c_q1.text_input("B)")
+        alt_c = c_q2.text_input("C)")
+        alt_d = c_q2.text_input("D)")
+        alt_e = st.text_input("E)")
+        correta = st.selectbox("Alternativa Correta", ["A", "B", "C", "D", "E"])
+        if st.button("Gravar Questão"):
+            st.info("Questão tabulada! (Funcionalidade de armazenamento em aba 'Questões' pronta para ativar)")
+
+with tab_dash:
+    st.subheader("📊 Evolução")
     df_v = conn.read(worksheet="Dados", ttl=0)
     if not df_v.empty:
-        df_v['Tempo'] = pd.to_numeric(df_v['Tempo'])
-        
-        c_g1, c_g2 = st.columns(2)
-        with c_g1:
-            fig1 = px.pie(df_v, names='Disciplina', values='Tempo', title="Minutos por Matéria", hole=0.4)
-            st.plotly_chart(fig1, use_container_width=True)
-        with c_g2:
-            df_v['Data_dt'] = pd.to_datetime(df_v['Data'], format="%d/%m/%Y %H:%M", errors='coerce')
-            fig2 = px.bar(df_v, x='Data', y='Tempo', color='Disciplina', title="Histórico de Sessões")
-            st.plotly_chart(fig2, use_container_width=True)
-except:
-    st.info("Gráficos aparecerão após o primeiro registro.")
+        fig = px.bar(df_v, x="Disciplina", y="Tempo", color="Foco", barmode="group")
+        st.plotly_chart(fig, use_container_width=True)
