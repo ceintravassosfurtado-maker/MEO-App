@@ -34,7 +34,7 @@ st.markdown("""
 
 st.title("🧭 MEO - Sistema de Gestão de Estudos")
 
-# --- LÓGICA DO CRONOMETRO ---
+# --- LÓGICA DO CRONOMETRO CORRIGIDA ---
 if 'rodando' not in st.session_state:
     st.session_state.rodando = False
 if 'inicio_time' not in st.session_state:
@@ -43,25 +43,27 @@ if 'inicio_time' not in st.session_state:
 col_t1, col_t2, col_t3 = st.columns([1, 1, 2])
 
 with col_t1:
-    if st.button("▶️ INICIAR ESTUDO", type="primary"):
+    if st.button("▶️ INICIAR", type="primary"):
         st.session_state.rodando = True
         st.session_state.inicio_time = time.time()
 
 with col_t2:
-    if st.button("⏹️ PARAR/RESETAR"):
+    if st.button("⏹️ PARAR"):
         st.session_state.rodando = False
-        st.session_state.inicio_time = None
 
 with col_t3:
+    # Usar um container vazio evita o erro de "removeChild"
+    placeholder = st.empty()
     if st.session_state.rodando:
         tempo_passado = int((time.time() - st.session_state.inicio_time) / 60)
-        st.metric("Tempo Decorrido", f"{tempo_passado} min", delta="Em progresso...")
-        time.sleep(1) 
+        placeholder.metric("Tempo Decorrido", f"{tempo_passado} min")
+        time.sleep(2) # Aumentar para 2 segundos ajuda na estabilidade
         st.rerun()
+    elif st.session_state.inicio_time is not None:
+        tempo_total = int((time.time() - st.session_state.inicio_time) / 60)
+        placeholder.metric("Tempo Finalizado", f"{tempo_total} min")
     else:
-        st.metric("Status", "Pausado", delta_color="off")
-
-st.markdown("---")
+        placeholder.metric("Status", "Aguardando")
 
 # --- FORMULÁRIO DE ENTRADA ---
 with st.form("form_estudo"):
