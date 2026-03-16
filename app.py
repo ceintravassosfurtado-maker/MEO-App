@@ -14,13 +14,11 @@ def clean_text(text):
     if text is None: return ""
     return str(text).encode('latin-1', 'replace').decode('latin-1')
 
-# --- CONEXÃO COM GOOGLE SHEETS (MÉTODO AUTOMÁTICO - EVITA ERRO DE ARGUMENTO) ---
+# --- CONEXÃO COM GOOGLE SHEETS ---
 try:
-    # O Streamlit lerá automaticamente as credenciais da seção [connections.gsheets] nos Secrets
     conn = st.connection("gsheets", type=GSheetsConnection)
 except Exception as e:
     st.error(f"Erro de Conexão: {e}")
-    st.info("💡 Se o erro persistir, verifique se os Secrets estão formatados corretamente.")
     st.stop()
 
 # --- ESTILIZAÇÃO CSS ---
@@ -34,39 +32,44 @@ st.markdown("""
 
 st.title("🧭 MEO - Sistema de Gestão de Estudos")
 
-# --- LÓGICA DO CRONOMETRO CORRIGIDA ---
+# --- LÓGICA DO CRONÔMETRO (VERSÃO ESTÁVEL) ---
 if 'rodando' not in st.session_state:
     st.session_state.rodando = False
 if 'inicio_time' not in st.session_state:
     st.session_state.inicio_time = None
+if 'tempo_final_input' not in st.session_state:
+    st.session_state.tempo_final_input = 0
 
 col_t1, col_t2, col_t3 = st.columns([1, 1, 2])
 
 with col_t1:
-    if st.button("▶️ INICIAR", type="primary"):
+    if st.button("▶️ INICIAR ESTUDO", type="primary"):
         st.session_state.rodando = True
         st.session_state.inicio_time = time.time()
+        st.rerun()
 
 with col_t2:
-    if st.button("⏹️ PARAR"):
+    if st.button("⏹️ PARAR / ZERAR"):
+        if st.session_state.rodando:
+            st.session_state.tempo_final_input = int((time.time() - st.session_state.inicio_time) / 60)
         st.session_state.rodando = False
+        st.session_state.inicio_time = None
+        st.rerun()
 
 with col_t3:
-    # Usar um container vazio evita o erro de "removeChild"
     placeholder = st.empty()
     if st.session_state.rodando:
         tempo_passado = int((time.time() - st.session_state.inicio_time) / 60)
-        placeholder.metric("Tempo Decorrido", f"{tempo_passado} min")
-        time.sleep(2) # Aumentar para 2 segundos ajuda na estabilidade
+        placeholder.metric("Tempo Decorrido", f"{tempo_passado} min", delta="Em progresso...")
+        time.sleep(2)
         st.rerun()
-    elif st.session_state.inicio_time is not None:
-        tempo_total = int((time.time() - st.session_state.inicio_time) / 60)
-        placeholder.metric("Tempo Finalizado", f"{tempo_total} min")
     else:
-        placeholder.metric("Status", "Aguardando")
+        placeholder.metric("Status", "Pausado", delta_color="off")
+
+st.markdown("---")
 
 # --- FORMULÁRIO DE ENTRADA ---
-with st.form("form_estudo"):
+with st.form("form_estudo", clear_on_submit=True):
     c1, c2 = st.columns(2)
     with c1:
         serie_sel = st.selectbox("Série", ["1 EM", "2 EM", "3 EM"])
@@ -75,18 +78,14 @@ with st.form("form_estudo"):
         assunto = st.text_input("Assunto Estudado", placeholder="Ex: Termodinâmica")
 
     with c2:
-        sugestao_tempo = 0
-        if not st.session_state.rodando and st.session_state.inicio_time is not None:
-            sugestao_tempo = int((time.time() - st.session_state.inicio_time) / 60)
-        
-        tempo_final = st.number_input("Tempo Total (minutos)", min_value=0, value=max(sugestao_tempo, 0))
+        tempo_final = st.number_input("Tempo Total (minutos)", min_value=0, value=st.session_state.tempo_final_input)
         foco_sel = st.slider("Nível de Foco (1-10)", 1, 10, 8)
         
     enviar = st.form_submit_button("🚀 FINALIZAR E SALVAR REGISTRO")
 
 if enviar:
-    if tempo_final <= 0:
-        st.warning("O tempo deve ser maior que zero!")
+    if tempo_final <= 0 and assunto == "":
+        st.warning("Preencha o assunto e o tempo!")
     else:
         novo_registro = {
             "Data": [datetime.datetime.now().strftime("%d/%m/%Y %H:%M")],
@@ -101,7 +100,7 @@ if enviar:
         df_novo = pd.DataFrame(novo_registro)
 
         try:
-            # 1. Tenta ler ou criar DataFrame vazio com as colunas certas
+            # Tenta ler a aba "Dados". Se não existir, cria uma nova.
             try:
                 df_atual = conn.read(worksheet="Dados", ttl=0)
             except:
@@ -110,41 +109,39 @@ if enviar:
             df_final = pd.concat([df_atual, df_novo], ignore_index=True)
             conn.update(worksheet="Dados", data=df_final)
             
-            st.success("✅ Registro salvo na planilha!")
-            st.session_state.inicio_time = None
+            st.success("✅ Registro salvo na aba 'Dados' da sua planilha!")
             
-            # Gerar PDF
+            # Gerar PDF para Download
             pdf = FPDF()
             pdf.add_page()
             pdf.set_font("Arial", 'B', 16)
-            pdf.cell(200, 15, clean_text("MEO - COMPROVANTE"), ln=True, align='C')
+            pdf.cell(200, 15, clean_text("MEO - COMPROVANTE DE ESTUDO"), ln=True, align='C')
             pdf.ln(10)
             pdf.set_font("Arial", size=12)
             for k, v in novo_registro.items():
                 pdf.cell(200, 10, clean_text(f"{k}: {v[0]}"), ln=True)
             
             pdf_bytes = pdf.output(dest='S').encode('latin-1')
-            st.download_button("📥 BAIXAR PDF", pdf_bytes, f"MEO_{disc_sel}.pdf", "application/pdf")
+            st.download_button("📥 BAIXAR COMPROVANTE (PDF)", pdf_bytes, f"MEO_{disc_sel}.pdf", "application/pdf")
             
         except Exception as e:
             st.error(f"Erro ao salvar: {e}")
 
 # --- DASHBOARD ---
 st.markdown("---")
-st.subheader("📊 Gráficos de Desempenho")
+st.subheader("📊 Resumo do seu Desempenho")
 
 try:
     df_v = conn.read(worksheet="Dados", ttl=0)
     if not df_v.empty:
-        df_v['Tempo'] = pd.to_numeric(df_v['Tempo'])
-        
         c_g1, c_g2 = st.columns(2)
         with c_g1:
-            fig1 = px.pie(df_v, names='Disciplina', values='Tempo', title="Minutos por Matéria", hole=0.4)
+            fig1 = px.pie(df_v, names='Disciplina', values='Tempo', title="Distribuição por Disciplina", hole=0.4)
             st.plotly_chart(fig1, use_container_width=True)
         with c_g2:
-            df_v['Data_dt'] = pd.to_datetime(df_v['Data'], format="%d/%m/%Y %H:%M", errors='coerce')
-            fig2 = px.bar(df_v, x='Data', y='Tempo', color='Disciplina', title="Histórico de Sessões")
+            fig2 = px.bar(df_v, x='Data', y='Tempo', color='Disciplina', title="Histórico de Tempo Estudado")
             st.plotly_chart(fig2, use_container_width=True)
+    else:
+        st.info("Os gráficos aparecerão aqui assim que você salvar o primeiro registro.")
 except:
-    st.info("Gráficos aparecerão após o primeiro registro.")
+    st.info("Aguardando dados para gerar gráficos...")
