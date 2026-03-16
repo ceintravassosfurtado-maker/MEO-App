@@ -7,7 +7,7 @@ import time
 import plotly.express as px
 import qrcode
 from io import BytesIO
-from PIL import Image
+import os
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="MEO - Sistema Inteligente", layout="wide", page_icon="🧭")
@@ -33,107 +33,117 @@ except Exception as e:
     st.error(f"Erro de Conexão: {e}")
     st.stop()
 
-# --- INTERFACE ---
-st.title("🧭 MEO - Gestão de Estudos Avançada")
+# --- ESTILIZAÇÃO CSS ---
+st.markdown("""
+    <style>
+    .main { background-color: #0e1117; color: #ffffff; }
+    .stButton>button { width: 100%; border-radius: 10px; font-weight: bold; }
+    </style>
+    """, unsafe_allow_html=True)
 
-
-    if st.session_state.rodando:
-        tempo_passado = int((time.time() - st.session_state.inicio_time) / 60)
-        st.metric("Tempo", f"{tempo_passado} min", "Contando...")
-        time.sleep(2)
-        st.rerun()
-
-st.markdown("---")
-
-# --- ABAS DE FUNCIONALIDADES ---
-tab_reg, tab_edit, tab_quest, tab_dash = st.tabs(["📝 Registro", "table Edição Excel", "❓ Questionários", "📊 Dashboard"])
-
-with tab_reg:
-    with st.form("form_avancado"):
-        c1, c2 = st.columns(2)
-        with c1:
-            serie = st.selectbox("Série", ["1 EM", "2 EM", "3 EM"])
-            disc = st.selectbox("Disciplina", ["Português", "Matemática", "Física", "Química", "Biologia", "História"])
-            assunto = st.text_input("Assunto")
-            # --- CAPTURA DE IMAGEM ---
-            foto = st.camera_input("📸 Capturar nota/livro")
-      # --- LÓGICA DO CRONÔMETRO (ESTABILIZADA) ---
+# --- ESTADO DA SESSÃO (TIMER) ---
 if 'rodando' not in st.session_state: st.session_state.rodando = False
 if 'inicio_time' not in st.session_state: st.session_state.inicio_time = None
 
-# Colocamos o cronômetro fora de colunas complexas para evitar o erro de 'removeChild'
-st.subheader("⏱️ Cronômetro de Estudo")
-c_timer, c_status = st.columns([1, 1])
+# --- BARRA LATERAL (NAVEGAÇÃO) ---
+st.sidebar.title("🧭 MENU MEO")
+escolha = st.sidebar.radio("Ir para:", ["📝 Registro", "📑 Edição Excel", "❓ Questionários", "📊 Dashboard"])
 
-with c_timer:
-    if not st.session_state.rodando:
-        if st.button("▶️ INICIAR SESSÃO", type="primary"):
-            st.session_state.rodando = True
-            st.session_state.inicio_time = time.time()
-            st.rerun()
-    else:
-        if st.button("⏹️ FINALIZAR AGORA"):
-            st.session_state.rodando = False
-            st.rerun()
+# --- CONTEÚDO PRINCIPAL ---
+st.title("MEO - Gestão de Estudos Avançada")
 
-with c_status:
-    if st.session_state.rodando:
-        tempo_passado = int((time.time() - st.session_state.inicio_time) / 60)
-        st.metric("Tempo Decorrido", f"{tempo_passado} min")
-        # Removido o sleep/rerun automático aqui para evitar o erro de Node
-        if st.button("🔄 Atualizar Tempo"):
-            st.rerun()
-    else:
-        st.write("Cronômetro parado.")
+# --- CRONÔMETRO (Sempre visível no topo) ---
+with st.expander("⏱️ CRONÔMETRO DE ESTUDO", expanded=st.session_state.rodando):
+    c_timer, c_status = st.columns([1, 1])
+    with c_timer:
+        if not st.session_state.rodando:
+            if st.button("▶️ INICIAR SESSÃO", type="primary"):
+                st.session_state.rodando = True
+                st.session_state.inicio_time = time.time()
+                st.rerun()
+        else:
+            if st.button("⏹️ PARAR CRONÔMETRO"):
+                st.session_state.rodando = False
+                st.rerun()
+    with c_status:
+        if st.session_state.rodando:
+            minutos = int((time.time() - st.session_state.inicio_time) / 60)
+            st.metric("Tempo Decorrido", f"{minutos} min")
+            if st.button("🔄 Atualizar"): st.rerun()
+        else:
+            st.write("Cronômetro pausado.")
 
 st.markdown("---")
 
-# --- ABAS (REORGANIZADAS PARA EVITAR CONFLITO DE RENDERIZAÇÃO) ---
-# Dica: Se o erro persistir, use rádio botões em vez de abas
-escolha = st.sidebar.radio("Navegação", ["📝 Registro", "📑 Edição Excel", "❓ Questionários", "📊 Dashboard"])
+# --- LÓGICA DAS PÁGINAS ---
 
 if escolha == "📝 Registro":
-    with st.form("form_avancado"):
-        # ... (todo o seu código de formulário aqui dentro) ...
-        # (Ajuste o valor do tempo para ler do session_state)
-        pass # substitua pelo seu código de formulário
+    with st.form("form_registro"):
+        st.subheader("Novo Registro de Estudo")
+        c1, c2 = st.columns(2)
+        with c1:
+            serie = st.selectbox("Série", ["1 EM", "2 EM", "3 EM"])
+            disc = st.selectbox("Disciplina", ["Português", "Matemática", "Física", "Química", "Biologia", "História", "Geografia", "Inglês"])
+            assunto = st.text_input("Assunto Estudado")
+            foto = st.camera_input("📸 Foto da anotação")
+        
+        with c2:
+            sugestao = 0
+            if not st.session_state.rodando and st.session_state.inicio_time:
+                sugestao = int((time.time() - st.session_state.inicio_time) / 60)
+            
+            tempo = st.number_input("Tempo Total (minutos)", min_value=0, value=max(sugestao, 0))
+            foco = st.slider("Nível de Foco", 1, 10, 8)
+            pesquisa = st.text_area("Notas / Temas de Pesquisa")
 
-elif escolha == "📑 Edição Excel":
-    # ... (seu código de data_editor aqui) ...
-    pass  
-      
+        enviar = st.form_submit_button("🚀 SALVAR REGISTRO")
+
+    if enviar:
+        novo_registro = {
+            "Data": [datetime.datetime.now().strftime("%d/%m/%Y %H:%M")],
+            "Serie": [serie], "Disciplina": [disc], "Assunto": [assunto],
+            "Tempo": [tempo], "Foco": [foco], "Pesquisa": [pesquisa]
+        }
+        try:
+            df_atual = conn.read(worksheet="Dados", ttl=0)
+            df_novo = pd.DataFrame(novo_registro)
+            df_final = pd.concat([df_atual, df_novo], ignore_index=True)
+            conn.update(worksheet="Dados", data=df_final)
+            st.success("✅ Sincronizado com sucesso!")
             
-            
-            
-            # --- PDF COM QR CODE ---
+            # Gerar PDF com QR Code
             pdf = FPDF()
             pdf.add_page()
             pdf.set_font("Arial", 'B', 16)
             pdf.cell(200, 10, "COMPROVANTE MEO", ln=True, align='C')
+            pdf.ln(5)
             pdf.set_font("Arial", size=12)
-            for k, v in novo.items():
+            for k, v in novo_registro.items():
                 pdf.cell(200, 8, clean_text(f"{k}: {v[0]}"), ln=True)
             
-            # Inserir QR Code no PDF
-            qr_buf = gerar_qr(f"Registro MEO: {assunto} - {datetime.datetime.now()}")
+            # QR Code
+            qr_buf = gerar_qr(f"MEO-VALID: {assunto} | {datetime.datetime.now()}")
             with open("temp_qr.png", "wb") as f: f.write(qr_buf.getbuffer())
-            pdf.image("temp_qr.png", x=150, y=10, w=40)
+            pdf.image("temp_qr.png", x=160, y=10, w=35)
             
-            pdf_out = pdf.output(dest='S').encode('latin-1')
-            st.download_button("📥 Baixar PDF com QR Code", pdf_out, "MEO_Pro.pdf")
+            pdf_bytes = pdf.output(dest='S').encode('latin-1')
+            st.download_button("📥 Baixar Comprovante PDF", pdf_bytes, f"MEO_{assunto}.pdf", "application/pdf")
+            os.remove("temp_qr.png") # Limpa arquivo temporário
         except Exception as e:
-            st.error(f"Erro: {e}")
+            st.error(f"Erro ao salvar: {e}")
 
-with tab_edit:
-    st.subheader("📝 Edição Direta (Estilo Excel)")
-    df_edit = conn.read(worksheet="Dados", ttl=0)
-    # Tabela editável
-    df_editado = st.data_editor(df_edit, num_rows="dynamic")
-    if st.button("💾 Salvar Alterações da Tabela"):
-        conn.update(worksheet="Dados", data=df_editado)
-        st.success("Planilha atualizada!")
+elif escolha == "📑 Edição Excel":
+    st.subheader("📑 Editor de Planilha (Direto)")
+    try:
+        df_edit = conn.read(worksheet="Dados", ttl=0)
+        df_editado = st.data_editor(df_edit, num_rows="dynamic", use_container_width=True)
+        if st.button("💾 Salvar Alterações"):
+            conn.update(worksheet="Dados", data=df_editado)
+            st.success("Planilha atualizada no Google Sheets!")
+    except:
+        st.warning("Não foi possível carregar os dados para edição.")
 
-with tab_quest:
+elif escolha == "❓ Questionários":
     st.subheader("❓ Gerador de Questionário")
     with st.expander("Criar Nova Pergunta"):
         pergunta = st.text_input("Enunciado")
@@ -143,13 +153,19 @@ with tab_quest:
         alt_c = c_q2.text_input("C)")
         alt_d = c_q2.text_input("D)")
         alt_e = st.text_input("E)")
-        correta = st.selectbox("Alternativa Correta", ["A", "B", "C", "D", "E"])
+        correta = st.selectbox("Correta", ["A", "B", "C", "D", "E"])
         if st.button("Gravar Questão"):
-            st.info("Questão tabulada! (Funcionalidade de armazenamento em aba 'Questões' pronta para ativar)")
+            st.info("Funcionalidade de banco de questões em desenvolvimento.")
 
-with tab_dash:
-    st.subheader("📊 Evolução")
-    df_v = conn.read(worksheet="Dados", ttl=0)
-    if not df_v.empty:
-        fig = px.bar(df_v, x="Disciplina", y="Tempo", color="Foco", barmode="group")
-        st.plotly_chart(fig, use_container_width=True)
+elif escolha == "📊 Dashboard":
+    st.subheader("📊 Gráficos de Evolução")
+    try:
+        df_v = conn.read(worksheet="Dados", ttl=0)
+        if not df_v.empty:
+            df_v['Tempo'] = pd.to_numeric(df_v['Tempo'], errors='coerce')
+            fig = px.bar(df_v, x="Disciplina", y="Tempo", color="Foco", title="Tempo por Disciplina (com Nível de Foco)")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Nenhum dado encontrado para gerar gráficos.")
+    except:
+        st.error("Erro ao carregar gráficos.")
