@@ -36,19 +36,7 @@ except Exception as e:
 # --- INTERFACE ---
 st.title("🧭 MEO - Gestão de Estudos Avançada")
 
-# --- CRONÔMETRO ---
-if 'rodando' not in st.session_state: st.session_state.rodando = False
-if 'inicio_time' not in st.session_state: st.session_state.inicio_time = None
 
-col_t1, col_t2, col_t3 = st.columns([1, 1, 2])
-with col_t1:
-    if st.button("▶️ INICIAR"):
-        st.session_state.rodando = True
-        st.session_state.inicio_time = time.time()
-with col_t2:
-    if st.button("⏹️ PARAR"):
-        st.session_state.rodando = False
-with col_t3:
     if st.session_state.rodando:
         tempo_passado = int((time.time() - st.session_state.inicio_time) / 60)
         st.metric("Tempo", f"{tempo_passado} min", "Contando...")
@@ -69,29 +57,53 @@ with tab_reg:
             assunto = st.text_input("Assunto")
             # --- CAPTURA DE IMAGEM ---
             foto = st.camera_input("📸 Capturar nota/livro")
-        
-        with c2:
-            sugestao = 0
-            if not st.session_state.rodando and st.session_state.inicio_time:
-                sugestao = int((time.time() - st.session_state.inicio_time) / 60)
-            tempo = st.number_input("Minutos", min_value=0, value=max(sugestao, 0))
-            foco = st.slider("Foco", 1, 10, 8)
-            pesquisa = st.text_area("Temas de Pesquisa / Resumo")
+      # --- LÓGICA DO CRONÔMETRO (ESTABILIZADA) ---
+if 'rodando' not in st.session_state: st.session_state.rodando = False
+if 'inicio_time' not in st.session_state: st.session_state.inicio_time = None
 
-        enviar = st.form_submit_button("🚀 SALVAR TUDO")
+# Colocamos o cronômetro fora de colunas complexas para evitar o erro de 'removeChild'
+st.subheader("⏱️ Cronômetro de Estudo")
+c_timer, c_status = st.columns([1, 1])
 
-    if enviar:
-        novo = {
-            "Data": [datetime.datetime.now().strftime("%d/%m/%Y %H:%M")],
-            "Serie": [serie], "Disciplina": [disc], "Assunto": [assunto],
-            "Tempo": [tempo], "Foco": [foco], "Pesquisa": [pesquisa]
-        }
-        df_novo = pd.DataFrame(novo)
-        try:
-            df_atual = conn.read(worksheet="Dados", ttl=0)
-            df_final = pd.concat([df_atual, df_novo], ignore_index=True)
-            conn.update(worksheet="Dados", data=df_final)
-            st.success("✅ Sincronizado!")
+with c_timer:
+    if not st.session_state.rodando:
+        if st.button("▶️ INICIAR SESSÃO", type="primary"):
+            st.session_state.rodando = True
+            st.session_state.inicio_time = time.time()
+            st.rerun()
+    else:
+        if st.button("⏹️ FINALIZAR AGORA"):
+            st.session_state.rodando = False
+            st.rerun()
+
+with c_status:
+    if st.session_state.rodando:
+        tempo_passado = int((time.time() - st.session_state.inicio_time) / 60)
+        st.metric("Tempo Decorrido", f"{tempo_passado} min")
+        # Removido o sleep/rerun automático aqui para evitar o erro de Node
+        if st.button("🔄 Atualizar Tempo"):
+            st.rerun()
+    else:
+        st.write("Cronômetro parado.")
+
+st.markdown("---")
+
+# --- ABAS (REORGANIZADAS PARA EVITAR CONFLITO DE RENDERIZAÇÃO) ---
+# Dica: Se o erro persistir, use rádio botões em vez de abas
+escolha = st.sidebar.radio("Navegação", ["📝 Registro", "📑 Edição Excel", "❓ Questionários", "📊 Dashboard"])
+
+if escolha == "📝 Registro":
+    with st.form("form_avancado"):
+        # ... (todo o seu código de formulário aqui dentro) ...
+        # (Ajuste o valor do tempo para ler do session_state)
+        pass # substitua pelo seu código de formulário
+
+elif escolha == "📑 Edição Excel":
+    # ... (seu código de data_editor aqui) ...
+    pass  
+      
+            
+            
             
             # --- PDF COM QR CODE ---
             pdf = FPDF()
