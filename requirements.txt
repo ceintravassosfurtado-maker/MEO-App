@@ -3,5 +3,3 @@ pandas
 streamlit-gsheets
 fpdf
 plotly
-qrcode
-pillow
